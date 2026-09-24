@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What reaches the screen?</title>
+<style>
+  :root {
+    --paper: #ffffff;
+    --ink: #000000;
+    --ink-soft: #4a4e56;
+    --torch: #ffc933;
+    --focus: #1d6fd8;
+    --room: #14161b;
+    --card: #3b3e46;
+    --pass: #ffd34d;
+    --blocked: #8c7433;
+    --screen: #2b2d33;
+    --screen-lit: #fff7dc;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+    font-size: 16px;
+    line-height: 1.45;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 20px 40px; }
+  h1 { font-size: 32px; line-height: 1.1; letter-spacing: -0.015em; margin: 0 0 8px; }
+  .intro { margin: 0; max-width: 62ch; color: var(--ink-soft); }
+
+  .controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px 32px; margin: 22px 0 16px; }
+  .group { display: flex; flex-direction: column; gap: 6px; }
+  .group-label { font-size: 14px; font-weight: bold; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  button {
+    font: inherit; font-size: 15px; line-height: 1.2; color: var(--ink);
+    background: var(--paper); border: 1.5px solid var(--ink); border-radius: 6px;
+    min-height: 40px; padding: 8px 12px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover { background: #f1f1f1; }
+  button[aria-pressed="true"] { background: var(--torch); font-weight: bold; }
+  button:focus-visible, canvas:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+  .order-btn { gap: 9px; padding: 8px 10px; }
+  .chip { display: inline-flex; align-items: center; gap: 3px; }
+  .ico { flex: none; }
+
+  .bench-box { position: relative; width: 100%; height: clamp(130px, 27vw, 330px); }
+  #bench { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  h2 { font-size: 20px; line-height: 1.25; margin: 26px 0 12px; }
+  .panels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+  .panel { margin: 0; display: flex; flex-direction: column; }
+  .panel figcaption { flex: 1 0 auto; display: flex; align-items: flex-start; gap: 10px; min-height: 46px; margin-bottom: 8px; }
+  .step {
+    flex: none; width: 26px; height: 26px; border: 1.5px solid var(--ink); border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold;
+  }
+  .cap-text { display: flex; flex-direction: column; min-width: 0; }
+  .cap-title { display: flex; align-items: center; gap: 6px; font-weight: bold; }
+  .cap-sub { font-size: 14px; color: var(--ink-soft); }
+  .pbox { position: relative; width: 100%; background: var(--room); }
+  .pbox::before { content: ""; display: block; padding-top: 100%; }
+  .pbox canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+
+  .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 16px 0 0; padding: 0; font-size: 14px; }
+  .legend li { display: inline-flex; align-items: center; gap: 8px; }
+  .sw { flex: none; width: 20px; height: 20px; border-radius: 3px; }
+  .sw-pass { background: var(--pass); }
+  .sw-blocked { background: var(--blocked); }
+  .sw-screen { background: var(--screen-lit); border: 5px solid var(--screen); }
+  .note { margin: 24px 0 0; max-width: 70ch; font-size: 14px; color: var(--ink-soft); }
+  .vh {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+  }
+
+  @media (max-width: 760px) {
+    h1 { font-size: 26px; }
+    .controls { gap: 14px 20px; }
+    .panels { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>What reaches the screen?</h1>
+    <p class="intro">Drag the torch or a sheet left or right. Choose the transparent sheet, then see what lands on each sheet and on the screen.</p>
+  </header>
+
+  <div class="controls">
+    <div class="group" role="group" aria-labelledby="lbl-order">
+      <span class="group-label" id="lbl-order">Sheet order</span>
+      <div class="seg" id="order-btns"></div>
+    </div>
+    <div class="group" role="group" aria-labelledby="lbl-clear">
+      <span class="group-label" id="lbl-clear">Transparent sheet</span>
+      <div class="seg" id="clear-btns"></div>
+    </div>
+    <div class="group" role="group" aria-labelledby="lbl-beam">
+      <span class="group-label" id="lbl-beam">Beam</span>
+      <div class="seg" id="beam-btns"></div>
+    </div>
+    <div class="group">
+      <button type="button" id="reset">Reset to question setup</button>
+    </div>
+  </div>
+
+  <div class="bench-box">
+    <canvas id="bench" tabindex="0" role="application"
+      aria-label="Side view of the torch, three sheets and screen on a bench"
+      aria-describedby="bench-help"></canvas>
+  </div>
+  <p id="bench-help" class="vh">Use the up and down arrow keys to pick the torch or a sheet, and the left and right arrow keys to move it. Hold Shift to move it further.</p>
+
+  <section aria-labelledby="views-title">
+    <h2 id="views-title">What lands on each sheet, and what reaches the screen</h2>
+    <div class="panels" id="panels"></div>
+    <ul class="legend">
+      <li><span class="sw sw-pass"></span>Light that goes through</li>
+      <li><span class="sw sw-blocked"></span>Light the sheet blocks</li>
+      <li><svg class="sw" viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect width="20" height="20" rx="3" fill="#3b3e46"/><rect x="4.5" y="4.5" width="11" height="11" fill="none" stroke="#eceff4" stroke-width="1.6" stroke-dasharray="3 2"/></svg>Edge of the hole</li>
+      <li><span class="sw sw-screen"></span>Light on the screen</li>
+    </ul>
+  </section>
+
+  <p class="note">The torch is treated as a single point of light, so edges come out sharp. A real torch gives slightly soft edges.</p>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ===== Setup you can change =====================================
+  const CONFIG = {
+    sheets: [                    // each sheet's letter and the shape of its hole
+      { id: 'X', shape: 'circle' },
+      { id: 'Y', shape: 'triangle' },
+      { id: 'Z', shape: 'square' },
+    ],
+    holeSize: 3,                 // cm: circle diameter, triangle base and height, square side
+    torchStart: 15,              // cm along the bench (front of the torch)
+    slots: [25, 50, 75],         // cm: evenly spaced sheet positions
+    screenX: 100,                // cm: the screen does not move
+    torchHalfAngle: 20,          // degrees: how widely the torch spreads its light
+    straightBeamRadius: 2.4,     // cm: half the width of the straight beam
+    minTorchGap: 7,              // cm: closest the torch can come to a sheet
+    panelHalfWidth: 7.5,         // cm: each view box shows 15 cm by 15 cm
+  };
+  // =================================================================
+
+  const HALF = CONFIG.holeSize / 2;
+  const TAN = Math.tan(CONFIG.torchHalfAngle * Math.PI / 180);
+  const SCREEN_X = CONFIG.screenX;
+  const REACH = HALF * Math.SQRT2;                       // farthest corner of any hole
+  const BEAM_R = Math.max(CONFIG.straightBeamRadius, REACH + 0.25);
+  const MIN_GAP = Math.max(CONFIG.minTorchGap, (REACH + 0.25) / TAN);
+
+  // Side-view drawing geometry, in cm
+  const G = {
+    xMin: -17, xMax: 108, yMin: -17.5, yMax: 20.5,
+    benchTop: -10, benchThick: 1.2, benchLeft: -15, benchRight: 106,
+    legs: [-9.5, 98.6], legW: 1.4,
+    sheetHalfH: 10, sheetHalfW: 0.45, screenTop: 16, lensR: 2.4,
+  };
+
+  const C = {
+    ink: '#000000', paper: '#ffffff', hint: '#9aa0a8', hover: '#f0f0f0', drag: '#e5e5e5', focus: '#1d6fd8',
+    beam: '255,201,51', beamEdge: '201,143,0', hit: '#f2b705', lens: '#ffe38a',
+    glassFill: 'rgba(143,199,232,0.55)',
+    room: '#14161b', card: '#3b3e46', glass: '#233646', blocked: '#8c7433', pass: '#ffd34d',
+    screen: '#2b2d33', screenLit: '#fff7dc',
+    edgeDark: 'rgba(12,13,16,0.9)', edgeLight: 'rgba(236,239,244,0.95)', scale: '#b9bdc6',
+  };
+
+  const state = {
+    torchX: CONFIG.torchStart,
+    sheets: CONFIG.sheets.map((s, i) => ({ id: s.id, shape: s.shape, x: CONFIG.slots[i] })),
+    orderIds: CONFIG.sheets.map(s => s.id),
+    transparent: null,           // letter of the transparent sheet, or null
+    beam: 'torch',               // 'torch' (light spreads) or 'straight'
+    hoverId: null,
+    dragId: null,
+    selectedId: 'torch',
+  };
+
+  let kbdMode = false;
+  let rafId = 0;
+  let tweenId = 0;
+  let BT = null;                 // side-view transform from the last draw
+  let dragOffset = 0;
+
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const snap = v => Math.round(v * 2) / 2;
+  const fmt = v => (Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v)) : v.toFixed(1));
+  const sheetById = id => state.sheets.find(s => s.id === id);
+  const isClear = s => state.transparent === s.id;
+
+  function ordered() {
+    const rank = id => state.orderIds.indexOf(id);
+    return state.sheets.slice().sort((a, b) => (a.x - b.x) || (rank(a.id) - rank(b.id)));
+  }
+  function refreshOrder() { state.orderIds = ordered().map(s => s.id); }
+
+  // ===== Light model ===============================================
+  // Torch mode: light spreads from a point at the front of the torch, so a hole
+  // d cm from the torch shows up at distance D enlarged by D / d.
+  // Straight mode: light travels as a parallel beam, so nothing is enlarged.
+  function scaleAt(s, planeX) {
+    if (state.beam === 'straight') return 1;
+    return Math.max(0, planeX - state.torchX) / Math.max(0.5, s.x - state.torchX);
+  }
+  function beamRadiusAt(planeX) {
+    return state.beam === 'straight' ? BEAM_R : Math.max(0, planeX - state.torchX) * TAN;
+  }
+  // The light arriving at a plane after passing some sheets: the torch's own beam,
+  // cut down by the (enlarged) hole of every opaque sheet it has passed.
+  function lightAt(planeX, passed) {
+    return {
+      r: beamRadiusAt(planeX),
+      clips: passed.filter(s => !isClear(s)).map(s => ({ shape: s.shape, k: scaleAt(s, planeX) })),
+    };
+  }
+  // Half the height of the light along the centre line (every hole is 3 cm tall there).
+  function halfHeightAt(planeX, passed) {
+    const L = lightAt(planeX, passed);
+    return L.clips.reduce((h, c) => Math.min(h, HALF * c.k), L.r);
+  }
+  function beamSegments(ord) {
+    const stops = [state.torchX, ...ord.map(s => s.x), SCREEN_X];
+    const segs = [];
+    for (let m = 0; m < stops.length - 1; m++) {
+      const a = stops[m], b = stops[m + 1];
+      if (b - a < 1e-6) continue;
+      const passed = ord.slice(0, m);
+      segs.push({ a, b, ha: halfHeightAt(a, passed), hb: halfHeightAt(b, passed) });
+    }
+    return segs;
+  }
+
+  // ===== Drawing helpers ===========================================
+  function fitCanvas(canvas) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    const W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== W) canvas.width = W;
+    if (canvas.height !== H) canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w, h };
+  }
+  function roundRectPath(ctx, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  // A hole shape centred on the torch's line, enlarged k times (T maps cm to pixels).
+  function shapePath(ctx, shape, k, T) {
+    const h = HALF * k * T.s;
+    ctx.beginPath();
+    if (shape === 'circle') ctx.arc(T.cx, T.cy, h, 0, Math.PI * 2);
+    else if (shape === 'square') ctx.rect(T.cx - h, T.cy - h, 2 * h, 2 * h);
+    else { ctx.moveTo(T.cx, T.cy - h); ctx.lineTo(T.cx + h, T.cy + h); ctx.lineTo(T.cx - h, T.cy + h); ctx.closePath(); }
+  }
+  function clipToLight(ctx, L, T) {
+    ctx.beginPath();
+    ctx.arc(T.cx, T.cy, Math.max(0, L.r * T.s), 0, Math.PI * 2);
+    ctx.clip();
+    for (const c of L.clips) { shapePath(ctx, c.shape, c.k, T); ctx.clip(); }
+  }
+  function drawIcon(ctx, shape, cx, cy, size, lw) {
+    const h = size / 2;
+    ctx.beginPath();
+    if (shape === 'circle') ctx.arc(cx, cy, h * 0.9, 0, Math.PI * 2);
+    else if (shape === 'square') ctx.rect(cx - h * 0.82, cy - h * 0.82, h * 1.64, h * 1.64);
+    else { ctx.moveTo(cx, cy - h); ctx.lineTo(cx + h, cy + h * 0.82); ctx.lineTo(cx - h, cy + h * 0.82); ctx.closePath(); }
+    ctx.lineWidth = lw;
+    ctx.stroke();
+  }
+  function iconSVG(shape) {
+    const inner = shape === 'circle' ? '<circle cx="8" cy="8" r="5.6"/>'
+      : shape === 'square' ? '<rect x="2.6" y="2.6" width="10.8" height="10.8"/>'
+      : '<path d="M8 2.2 13.8 13.2H2.2Z"/>';
+    return '<svg class="ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false" ' +
+      'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round">' + inner + '</svg>';
+  }
+
+  // ===== Side view (the bench) =====================================
+  const benchCanvas = document.getElementById('bench');
+
+  function benchTransform(w, h) {
+    const s = Math.min(w / (G.xMax - G.xMin), h / (G.yMax - G.yMin));
+    const ox = (w - s * (G.xMax - G.xMin)) / 2;
+    const oy = (h - s * (G.yMax - G.yMin)) / 2;
+    return {
+      s,
+      X: x => ox + (x - G.xMin) * s,
+      Y: y => oy + (G.yMax - y) * s,
+      wx: px => G.xMin + (px - ox) / s,
+    };
+  }
+  function boxRect(ctx, T, x0, y0, x1, y1) {
+    ctx.beginPath();
+    ctx.rect(T.X(x0), T.Y(y1), (x1 - x0) * T.s, (y1 - y0) * T.s);
+    ctx.fill();
+    ctx.stroke();
+  }
+  function objectBox(id) {
+    if (id === 'torch') return { x0: state.torchX - 14, x1: state.torchX + 1.2, y0: G.benchTop + 0.2, y1: 5.6 };
+    const s = sheetById(id);
+    return { x0: s.x - 2.2, x1: s.x + 2.2, y0: G.benchTop + 0.2, y1: G.sheetHalfH + 1 };
+  }
+
+  function drawBeam(ctx, T, ord) {
+    const segs = beamSegments(ord);
+    const top = T.Y(G.sheetHalfH + 2), bottom = T.Y(-(G.sheetHalfH + 2));
+    const ramp = (rgb, a) => {
+      const g = ctx.createLinearGradient(0, top, 0, bottom);
+      g.addColorStop(0, 'rgba(' + rgb + ',0)');
+      g.addColorStop(0.2, 'rgba(' + rgb + ',' + a + ')');
+      g.addColorStop(0.8, 'rgba(' + rgb + ',' + a + ')');
+      g.addColorStop(1, 'rgba(' + rgb + ',0)');
+      return g;
+    };
+    ctx.save();
+    ctx.fillStyle = ramp(C.beam, 0.6);
+    for (const sg of segs) {
+      ctx.beginPath();
+      ctx.moveTo(T.X(sg.a), T.Y(sg.ha));
+      ctx.lineTo(T.X(sg.b), T.Y(sg.hb));
+      ctx.lineTo(T.X(sg.b), T.Y(-sg.hb));
+      ctx.lineTo(T.X(sg.a), T.Y(-sg.ha));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.strokeStyle = ramp(C.beamEdge, 0.85);
+    ctx.lineWidth = clamp(T.s * 0.12, 1, 1.6);
+    ctx.beginPath();
+    for (const sg of segs) {
+      ctx.moveTo(T.X(sg.a), T.Y(sg.ha)); ctx.lineTo(T.X(sg.b), T.Y(sg.hb));
+      ctx.moveTo(T.X(sg.a), T.Y(-sg.ha)); ctx.lineTo(T.X(sg.b), T.Y(-sg.hb));
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTorch(ctx, T) {
+    const x = state.torchX, r = 1.5;
+    const bx0 = x - 13, bx1 = x - 3.4;
+    ctx.fillStyle = C.paper;
+    boxRect(ctx, T, x - 12, G.benchTop, x - 4.6, -r);                 // stand
+    ctx.beginPath();                                                    // body
+    ctx.moveTo(T.X(bx0 + r), T.Y(r));
+    ctx.lineTo(T.X(bx1), T.Y(r));
+    ctx.lineTo(T.X(bx1), T.Y(-r));
+    ctx.lineTo(T.X(bx0 + r), T.Y(-r));
+    ctx.arc(T.X(bx0 + r), T.Y(0), r * T.s, Math.PI / 2, Math.PI * 1.5);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();                                                    // head
+    ctx.moveTo(T.X(bx1), T.Y(r));
+    ctx.lineTo(T.X(x), T.Y(G.lensR));
+    ctx.lineTo(T.X(x), T.Y(-G.lensR));
+    ctx.lineTo(T.X(bx1), T.Y(-r));
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();                                                    // lens
+    ctx.ellipse(T.X(x), T.Y(0), 0.55 * T.s, G.lensR * T.s, 0, 0, Math.PI * 2);
+    ctx.fillStyle = C.lens;
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(T.X(x), T.Y(0), 0.28 * T.s, (G.lensR - 0.6) * T.s, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  function drawLabels(ctx, T, ord, lw) {
+    const fs = clamp(T.s * 1.7, 11, 17);
+    ctx.save();
+    ctx.fillStyle = C.ink;
+    ctx.strokeStyle = C.ink;
+    ctx.font = fs + 'px Arial, Helvetica, sans-serif';
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'center';
+    ctx.fillText('torch', T.X(state.torchX - 8.3), T.Y(3.2));
+    ctx.fillText('screen', T.X(SCREEN_X), T.Y(G.screenTop + 1.3));
+    ctx.textAlign = 'left';
+    const iconSize = fs * 0.8, gap = fs * 0.35, rowH = fs * 1.35;
+    const rights = [];
+    for (const s of ord) {
+      const text = 'sheet ' + s.id + (isClear(s) ? ' (transparent)' : '');
+      const tw = ctx.measureText(text).width;
+      const total = tw + gap + iconSize;
+      const left = T.X(s.x) - total / 2;
+      let row = 0;
+      while (row < rights.length && left < rights[row] + fs * 0.6) row++;
+      rights[row] = left + total;
+      const baseY = T.Y(G.sheetHalfH + 1.2) - row * rowH;
+      ctx.fillText(text, left, baseY);
+      drawIcon(ctx, s.shape, left + tw + gap + iconSize / 2, baseY - fs * 0.36, iconSize, Math.max(1.2, lw * 0.8));
+    }
+    ctx.restore();
+  }
+
+  function drawHints(ctx, T, ord) {
+    const y = T.Y(G.benchTop - G.benchThick - 1.4);
+    const u = clamp(T.s * 0.8, 4, 9);
+    ctx.save();
+    ctx.fillStyle = C.hint;
+    const arrows = cx => {
+      ctx.beginPath();
+      ctx.moveTo(cx - u * 1.6, y); ctx.lineTo(cx - u * 0.5, y - u * 0.6); ctx.lineTo(cx - u * 0.5, y + u * 0.6); ctx.closePath();
+      ctx.moveTo(cx + u * 1.6, y); ctx.lineTo(cx + u * 0.5, y - u * 0.6); ctx.lineTo(cx + u * 0.5, y + u * 0.6); ctx.closePath();
+      ctx.fill();
+    };
+    arrows(T.X(state.torchX - 8.3));
+    ord.forEach(s => arrows(T.X(s.x)));
+    ctx.restore();
+  }
+
+  function drawBench(ord) {
+    const { ctx, w, h } = fitCanvas(benchCanvas);
+    const T = benchTransform(w, h);
+    BT = T;
+    ctx.fillStyle = C.paper;
+    ctx.fillRect(0, 0, w, h);
+    const lw = clamp(T.s * 0.2, 1.1, 2.2);
+
+    const active = state.dragId || state.hoverId;
+    if (active) {
+      const b = objectBox(active);
+      roundRectPath(ctx, T.X(b.x0), T.Y(b.y1), (b.x1 - b.x0) * T.s, (b.y1 - b.y0) * T.s, 6);
+      ctx.fillStyle = state.dragId ? C.drag : C.hover;
+      ctx.fill();
+    }
+
+    drawBeam(ctx, T, ord);
+
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = C.ink;
+    ctx.lineJoin = 'round';
+
+    ctx.fillStyle = C.paper;                                            // legs and bench
+    for (const lx of G.legs) boxRect(ctx, T, lx, G.yMin + 0.6, lx + G.legW, G.benchTop - G.benchThick);
+    boxRect(ctx, T, G.benchLeft, G.benchTop - G.benchThick, G.benchRight, G.benchTop);
+
+    drawTorch(ctx, T);
+
+    const stripW = Math.max(2, 0.35 * T.s);
+    ord.forEach((s, m) => {                                             // sheets, with a gap for the hole
+      ctx.fillStyle = isClear(s) ? C.glassFill : C.paper;
+      boxRect(ctx, T, s.x - G.sheetHalfW, HALF, s.x + G.sheetHalfW, G.sheetHalfH);
+      boxRect(ctx, T, s.x - G.sheetHalfW, G.benchTop, s.x + G.sheetHalfW, -HALF);
+      if (!isClear(s)) {                                                // light landing on the sheet
+        const hin = Math.min(halfHeightAt(s.x, ord.slice(0, m)), G.sheetHalfH);
+        if (hin > HALF) {
+          const x0 = T.X(s.x - G.sheetHalfW) - stripW;
+          ctx.fillStyle = C.hit;
+          ctx.fillRect(x0, T.Y(hin), stripW, (hin - HALF) * T.s);
+          ctx.fillRect(x0, T.Y(-HALF), stripW, (hin - HALF) * T.s);
+        }
+      }
+    });
+
+    ctx.fillStyle = C.paper;                                            // screen
+    boxRect(ctx, T, SCREEN_X - G.sheetHalfW, G.benchTop, SCREEN_X + G.sheetHalfW, G.screenTop);
+    const hs = halfHeightAt(SCREEN_X, ord);
+    if (hs > 0) {
+      const top = Math.min(hs, G.screenTop), bot = Math.max(-hs, G.benchTop);
+      ctx.fillStyle = C.hit;
+      ctx.fillRect(T.X(SCREEN_X - G.sheetHalfW) - stripW, T.Y(top), stripW, (top - bot) * T.s);
+    }
+
+    drawLabels(ctx, T, ord, lw);
+    drawHints(ctx, T, ord);
+
+    if (kbdMode && document.activeElement === benchCanvas) {
+      const b = objectBox(state.selectedId);
+      ctx.save();
+      ctx.setLineDash([6, 4]);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = C.focus;
+      roundRectPath(ctx, T.X(b.x0), T.Y(b.y1), (b.x1 - b.x0) * T.s, (b.y1 - b.y0) * T.s, 6);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ===== The four views ============================================
+  const panelsEl = document.getElementById('panels');
+  const panels = [];
+  for (let i = 0; i < 4; i++) {
+    const fig = document.createElement('figure');
+    fig.className = 'panel';
+    fig.innerHTML =
+      '<figcaption><span class="step">' + (i + 1) + '</span>' +
+      '<span class="cap-text"><span class="cap-title"><span class="cap-name"></span><span class="cap-icon"></span></span>' +
+      '<span class="cap-sub"></span></span></figcaption>' +
+      '<div class="pbox"><canvas role="img"></canvas></div>';
+    panelsEl.appendChild(fig);
+    panels.push({
+      name: fig.querySelector('.cap-name'),
+      icon: fig.querySelector('.cap-icon'),
+      sub: fig.querySelector('.cap-sub'),
+      canvas: fig.querySelector('canvas'),
+      box: fig.querySelector('.pbox'),
+    });
+  }
+
+  const panelTransform = size => ({ cx: size / 2, cy: size / 2, s: size / (2 * CONFIG.panelHalfWidth) });
+
+  function drawSheen(ctx, size) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(190,225,255,0.10)';
+    ctx.lineWidth = size * 0.07;
+    ctx.beginPath();
+    ctx.moveTo(size * 0.05, size); ctx.lineTo(size * 0.55, 0);
+    ctx.moveTo(size * 0.30, size); ctx.lineTo(size * 0.80, 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawHoleEdge(ctx, shape, T, size) {
+    const dash = Math.max(5, size * 0.024);
+    ctx.save();
+    ctx.lineWidth = Math.max(1.5, size * 0.008);
+    ctx.lineJoin = 'round';
+    shapePath(ctx, shape, 1, T);
+    ctx.setLineDash([dash, dash]);
+    ctx.strokeStyle = C.edgeDark;
+    ctx.stroke();
+    ctx.lineDashOffset = dash;
+    ctx.strokeStyle = C.edgeLight;
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawScaleBar(ctx, size, T) {
+    const len = CONFIG.holeSize * T.s;
+    const x0 = Math.round(size * 0.06), y = Math.round(size * 0.92), tick = Math.max(3, size * 0.015);
+    ctx.save();
+    ctx.strokeStyle = C.scale;
+    ctx.fillStyle = C.scale;
+    ctx.lineWidth = Math.max(1.25, size * 0.005);
+    ctx.beginPath();
+    ctx.moveTo(x0, y); ctx.lineTo(x0 + len, y);
+    ctx.moveTo(x0, y - tick); ctx.lineTo(x0, y + tick);
+    ctx.moveTo(x0 + len, y - tick); ctx.lineTo(x0 + len, y + tick);
+    ctx.stroke();
+    ctx.font = Math.max(10, Math.round(size * 0.05)) + 'px Arial, Helvetica, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(CONFIG.holeSize + ' cm', x0, y - tick - 2);
+    ctx.restore();
+  }
+
+  function drawSheetPanel(p, s, passed) {
+    const { ctx, w } = fitCanvas(p.canvas);
+    const size = w, T = panelTransform(size), clear = isClear(s);
+    ctx.fillStyle = clear ? C.glass : C.card;                           // the sheet itself
+    ctx.fillRect(0, 0, size, size);
+    if (clear) drawSheen(ctx, size);
+    shapePath(ctx, s.shape, 1, T);                                      // looking through the hole
+    ctx.fillStyle = C.room;
+    ctx.fill();
+    ctx.save();                                                         // light landing on the sheet
+    clipToLight(ctx, lightAt(s.x, passed), T);
+    if (clear) {
+      ctx.fillStyle = C.pass;
+      ctx.fillRect(0, 0, size, size);
+    } else {
+      ctx.fillStyle = C.blocked;
+      ctx.fillRect(0, 0, size, size);
+      shapePath(ctx, s.shape, 1, T);
+      ctx.clip();
+      ctx.fillStyle = C.pass;
+      ctx.fillRect(0, 0, size, size);
+    }
+    ctx.restore();
+    drawHoleEdge(ctx, s.shape, T, size);
+    drawScaleBar(ctx, size, T);
+  }
+
+  function drawScreenPanel(p, ord) {
+    const { ctx, w } = fitCanvas(p.canvas);
+    const size = w, T = panelTransform(size);
+    ctx.fillStyle = C.screen;
+    ctx.fillRect(0, 0, size, size);
+    ctx.save();
+    clipToLight(ctx, lightAt(SCREEN_X, ord), T);
+    ctx.fillStyle = C.screenLit;
+    ctx.fillRect(0, 0, size, size);
+    ctx.restore();
+    drawScaleBar(ctx, size, T);
+  }
+
+  function drawPanels(ord) {
+    ord.forEach((s, i) => drawSheetPanel(panels[i], s, ord.slice(0, i)));
+    drawScreenPanel(panels[3], ord);
+  }
+
+  function setCaption(p, name, shape, sub, aria) {
+    if (p.nameText !== name) { p.name.textContent = name; p.nameText = name; }
+    if (p.shape !== shape) { p.icon.innerHTML = shape ? iconSVG(shape) : ''; p.shape = shape; }
+    if (p.subText !== sub) { p.sub.textContent = sub; p.subText = sub; }
+    if (p.aria !== aria) { p.canvas.setAttribute('aria-label', aria); p.aria = aria; }
+  }
+  function updateCaptions(ord) {
+    ord.forEach((s, i) => setCaption(
+      panels[i], 'Sheet ' + s.id, s.shape,
+      (isClear(s) ? 'Transparent' : 'Opaque') + ', ' + fmt(s.x - state.torchX) + ' cm from the torch',
+      'Light landing on sheet ' + s.id + ', which has a ' + s.shape + '-shaped hole'));
+    setCaption(panels[3], 'Screen', null,
+      fmt(SCREEN_X - state.torchX) + ' cm from the torch', 'What reaches the screen');
+  }
+
+  // ===== Controls ==================================================
+  function permutations(arr) {
+    if (arr.length <= 1) return [arr.slice()];
+    const out = [];
+    arr.forEach((v, i) => permutations(arr.filter((_, j) => j !== i)).forEach(p => out.push([v].concat(p))));
+    return out;
+  }
+  function makeButton(parentId, html, onClick, ariaLabel, className) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    if (className) b.className = className;
+    b.innerHTML = html;
+    if (ariaLabel) b.setAttribute('aria-label', ariaLabel);
+    b.addEventListener('click', onClick);
+    document.getElementById(parentId).appendChild(b);
+    return b;
+  }
+  const shapeOf = id => sheetById(id).shape;
+
+  const orderBtns = permutations(CONFIG.sheets.map(s => s.id)).map(ids => ({
+    key: ids.join(''),
+    b: makeButton('order-btns',
+      ids.map(id => '<span class="chip">' + iconSVG(shapeOf(id)) + id + '</span>').join(''),
+      () => setOrder(ids),
+      'Order: ' + ids.map(id => 'sheet ' + id + ' (' + shapeOf(id) + ')').join(', then '),
+      'order-btn'),
+  }));
+
+  const clearBtns = [{ id: null }].concat(CONFIG.sheets).map(c => ({
+    id: c.id,
+    b: makeButton('clear-btns',
+      c.id ? iconSVG(c.shape) + 'Sheet ' + c.id : 'None',
+      () => { state.transparent = c.id; requestRender(); },
+      c.id ? 'Sheet ' + c.id + ' (' + c.shape + ')' : 'None'),
+  }));
+
+  const beamBtns = [
+    { id: 'torch', label: 'Torch (light spreads)' },
+    { id: 'straight', label: 'Straight beam' },
+  ].map(c => ({
+    id: c.id,
+    b: makeButton('beam-btns', c.label, () => { state.beam = c.id; requestRender(); }),
+  }));
+
+  document.getElementById('reset').addEventListener('click', resetSetup);
+
+  function updateButtons(ord) {
+    const key = ord.map(s => s.id).join('');
+    orderBtns.forEach(o => o.b.setAttribute('aria-pressed', String(o.key === key)));
+    clearBtns.forEach(o => o.b.setAttribute('aria-pressed', String(o.id === state.transparent)));
+    beamBtns.forEach(o => o.b.setAttribute('aria-pressed', String(o.id === state.beam)));
+  }
+
+  // ===== Moving things =============================================
+  function moveObject(id, x) {
+    x = snap(x);
+    if (id === 'torch') {
+      const first = Math.min(...state.sheets.map(s => s.x));
+      state.torchX = clamp(x, 0, first - MIN_GAP);
+    } else {
+      sheetById(id).x = clamp(x, state.torchX + MIN_GAP, SCREEN_X - 3);
+      refreshOrder();
+    }
+  }
+
+  const reduceMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  function stopTween() {
+    if (!tweenId) return;
+    cancelAnimationFrame(tweenId);
+    tweenId = 0;
+    state.sheets.forEach(s => { s.x = snap(s.x); });
+    const first = Math.min(...state.sheets.map(s => s.x));
+    state.torchX = Math.min(snap(state.torchX), first - MIN_GAP);
+    refreshOrder();
+  }
+  function animateTo(torchX, xs) {
+    stopTween();
+    const fromTorch = state.torchX, fromXs = {};
+    state.sheets.forEach(s => { fromXs[s.id] = s.x; });
+    const settle = () => {
+      state.sheets.forEach(s => { s.x = xs[s.id]; });
+      state.torchX = torchX;
+      refreshOrder();
+      requestRender();
+    };
+    if (reduceMotion) { settle(); return; }
+    const t0 = performance.now(), dur = 320;
+    const step = now => {
+      const t = Math.min(1, (now - t0) / dur);
+      const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      state.sheets.forEach(s => { s.x = fromXs[s.id] + (xs[s.id] - fromXs[s.id]) * e; });
+      const first = Math.min(...state.sheets.map(s => s.x));
+      state.torchX = Math.min(fromTorch + (torchX - fromTorch) * e, first - MIN_GAP);
+      refreshOrder();
+      if (t < 1) { render(); tweenId = requestAnimationFrame(step); }
+      else { tweenId = 0; settle(); }
+    };
+    tweenId = requestAnimationFrame(step);
+  }
+  function setOrder(ids) {
+    const xs = {};
+    ids.forEach((id, i) => { xs[id] = CONFIG.slots[i]; });
+    const torchX = state.torchX <= CONFIG.slots[0] - MIN_GAP ? state.torchX : CONFIG.torchStart;
+    animateTo(snap(torchX), xs);
+  }
+  function resetSetup() {
+    state.transparent = null;
+    state.beam = 'torch';
+    const xs = {};
+    CONFIG.sheets.forEach((s, i) => { xs[s.id] = CONFIG.slots[i]; });
+    animateTo(CONFIG.torchStart, xs);
+    requestRender();
+  }
+
+  function localX(e) { return e.clientX - benchCanvas.getBoundingClientRect().left; }
+  function hitTest(px) {
+    if (!BT) return null;
+    const x = BT.wx(px);
+    const tol = Math.max(2, 16 / BT.s);
+    let best = null, bestD = Infinity;
+    for (const s of state.sheets) {
+      const d = Math.abs(x - s.x);
+      if (d <= tol && d < bestD) { best = s.id; bestD = d; }
+    }
+    if (best) return best;
+    if (x >= state.torchX - 14 && x <= state.torchX + 1.5) return 'torch';
+    return null;
+  }
+
+  benchCanvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    kbdMode = false;
+    const px = localX(e);
+    const id = hitTest(px);
+    if (!id) { requestRender(); return; }
+    e.preventDefault();
+    stopTween();
+    state.dragId = id;
+    state.selectedId = id;
+    dragOffset = (id === 'torch' ? state.torchX : sheetById(id).x) - BT.wx(px);
+    try { benchCanvas.setPointerCapture(e.pointerId); } catch (err) { /* not supported */ }
+    benchCanvas.style.cursor = 'grabbing';
+    try { benchCanvas.focus({ preventScroll: true }); } catch (err) { benchCanvas.focus(); }
+    requestRender();
+  });
+  benchCanvas.addEventListener('pointermove', e => {
+    const px = localX(e);
+    if (state.dragId) {
+      moveObject(state.dragId, BT.wx(px) + dragOffset);
+      requestRender();
+      return;
+    }
+    if (e.pointerType !== 'mouse') return;
+    const id = hitTest(px);
+    if (id !== state.hoverId) {
+      state.hoverId = id;
+      benchCanvas.style.cursor = id ? 'grab' : 'default';
+      requestRender();
+    }
+  });
+  function endDrag(e) {
+    if (!state.dragId) return;
+    state.dragId = null;
+    state.hoverId = e && e.pointerType === 'mouse' && e.clientX !== undefined ? hitTest(localX(e)) : null;
+    benchCanvas.style.cursor = state.hoverId ? 'grab' : 'default';
+    requestRender();
+  }
+  benchCanvas.addEventListener('pointerup', endDrag);
+  benchCanvas.addEventListener('pointercancel', endDrag);
+  benchCanvas.addEventListener('lostpointercapture', endDrag);
+  benchCanvas.addEventListener('pointerleave', () => {
+    if (!state.dragId && state.hoverId) {
+      state.hoverId = null;
+      benchCanvas.style.cursor = 'default';
+      requestRender();
+    }
+  });
+
+  benchCanvas.addEventListener('keydown', e => {
+    const ids = ['torch'].concat(ordered().map(s => s.id));
+    let i = Math.max(0, ids.indexOf(state.selectedId));
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      i = (i + (e.key === 'ArrowDown' ? 1 : ids.length - 1)) % ids.length;
+      state.selectedId = ids[i];
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const id = ids[i];
+      const step = (e.shiftKey ? 5 : 1) * (e.key === 'ArrowRight' ? 1 : -1);
+      stopTween();
+      moveObject(id, (id === 'torch' ? state.torchX : sheetById(id).x) + step);
+    } else {
+      return;
+    }
+    e.preventDefault();
+    kbdMode = true;
+    requestRender();
+  });
+  benchCanvas.addEventListener('focus', () => {
+    try { if (benchCanvas.matches(':focus-visible')) kbdMode = true; } catch (err) { /* older browser */ }
+    requestRender();
+  });
+  benchCanvas.addEventListener('blur', () => { kbdMode = false; requestRender(); });
+
+  // ===== Render ====================================================
+  function render() {
+    const ord = ordered();
+    drawBench(ord);
+    drawPanels(ord);
+    updateCaptions(ord);
+    updateButtons(ord);
+  }
+  function requestRender() {
+    if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; render(); });
+  }
+
+  if ('ResizeObserver' in window) {
+    const ro = new ResizeObserver(() => requestRender());
+    ro.observe(benchCanvas.parentElement);
+    panels.forEach(p => ro.observe(p.box));
+  }
+  window.addEventListener('resize', requestRender);
+  render();
+})();
+</script>
+</body>
+</html>
